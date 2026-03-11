@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f3f4f6; min-height: 100vh; }
+    .sidebar { position: fixed; left: 0; top: 0; width: 250px; height: 100%; background: white; border-right: 1px solid #e5e7eb; padding: 1.5rem; }
+    .sidebar h1 { font-size: 1.25rem; color: #2563eb; margin-bottom: 2rem; }
+    .sidebar nav a { display: block; padding: 0.75rem; color: #4b5563; text-decoration: none; border-radius: 0.5rem; margin-bottom: 0.5rem; }
+    .sidebar nav a:hover { background: #f3f4f6; }
+    .sidebar .logout { position: absolute; bottom: 1.5rem; left: 1.5rem; color: #2563eb; text-decoration: none; }
+    .main { margin-left: 250px; padding: 2rem; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    .btn { background: #2563eb; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; text-decoration: none; }
+    .stat { background: white; padding: 1.5rem; border-radius: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: inline-block; margin-bottom: 2rem; }
+    .stat .number { font-size: 2rem; font-weight: bold; color: #2563eb; }
+    .chatbot-item { background: white; padding: 1rem; border-radius: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1rem; display: flex; justify-content: space-between; }
+    .badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; background: #dcfce7; color: #166534; }
+  </style>
+</head>
+<body>
+  <aside class="sidebar">
+    <h1>AI Service</h1>
+    <nav>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/dashboard/chatbots">Chatbots</a>
+      <a href="/dashboard/billing">Abonnement</a>
+    </nav>
+    <a href="/api/logout" class="logout">Uitloggen</a>
+  </aside>
+
+  <main class="main">
+    <div class="header">
+      <h2>Dashboard</h2>
+      <a href="/dashboard/chatbots/new" class="btn">Nieuwe chatbot</a>
+    </div>
+
+    <div class="stat">
+      <div class="number" id="count">0</div>
+      <div>Chatbots</div>
+    </div>
+
+    <h3 style="margin-bottom: 1rem;">Jouw Chatbots</h3>
+    <div id="list"></div>
+  </main>
+
+  <script>
+    async function load() {
+      const bots = await (await fetch('/api/chatbots')).json();
+      document.getElementById('count').textContent = bots.length;
+      document.getElementById('list').innerHTML = bots.map(b => `
+        <div class="chatbot-item">
+          <div>
+            <strong>${b.name}</strong>
+            <p style="font-size: 0.875rem; color: #6b7280;">${b.website_url}</p>
+            <p style="font-size: 0.75rem; color: #9ca3af;">API: ${b.api_key}</p>
+          </div>
+          <span class="badge">${b.is_active ? 'Actief' : 'Inactief'}</span>
+        </div>
+      `).join('');
+    }
+    load();
+  </script>
+</body>
+</html>
