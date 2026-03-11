@@ -16,7 +16,7 @@ app.use(cookieParser());
 const DB_FILE = './database.json';
 function loadDB() {
   if (fs.existsSync(DB_FILE)) return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  return { users: [], chatbots: [] };
+  return { users: [], chatbots: [], conversations: [] };
 }
 function saveDB(db) { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2)); }
 
@@ -412,6 +412,146 @@ const newChatbotPage = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// ============ WIDGET JS ============
+
+function generateWidgetJS(origin) {
+  return `(function() {
+  var chatbotId = document.currentScript.getAttribute('data-id');
+  var chatbotName = document.currentScript.getAttribute('data-name') || 'AI Assistant';
+  var primaryColor = document.currentScript.getAttribute('data-color') || '#2563eb';
+  
+  var styles = document.createElement('style');
+  styles.textContent = \`
+    #ai-chat-widget { position: fixed; bottom: 20px; right: 20px; z-index: 999999; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    #ai-chat-button { width: 60px; height: 60px; border-radius: 50%; background: \${primaryColor}; color: white; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size: 24px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
+    #ai-chat-button:hover { transform: scale(1.05); }
+    #ai-chat-window { position: absolute; bottom: 75px; right: 0; width: 380px; height: 550px; background: white; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); display: none; flex-direction: column; overflow: hidden; border: 1px solid #e5e7eb; }
+    #ai-chat-header { background: \${primaryColor}; color: white; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; }
+    #ai-chat-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
+    #ai-chat-header .close { background: none; border: none; color: white; font-size: 20px; cursor: pointer; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+    #ai-chat-header .close:hover { background: rgba(255,255,255,0.2); }
+    #ai-chat-messages { flex: 1; overflow-y: auto; padding: 20px; background: #f9fafb; }
+    .ai-message { margin-bottom: 16px; display: flex; align-items: flex-start; max-width: 85%; }
+    .ai-message.user { margin-left: auto; flex-direction: row-reverse; }
+    .ai-message .avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    .ai-message.bot .avatar { background: \${primaryColor}; color: white; margin-right: 8px; }
+    .ai-message.user .avatar { background: #e5e7eb; color: #374151; margin-left: 8px; }
+    .ai-message .bubble { padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.5; word-wrap: break-word; }
+    .ai-message.bot .bubble { background: white; color: #1f2937; border: 1px solid #e5e7eb; border-bottom-left-radius: 4px; }
+    .ai-message.user .bubble { background: \${primaryColor}; color: white; border-bottom-right-radius: 4px; }
+    #ai-chat-input { display: flex; padding: 16px 20px; background: white; border-top: 1px solid #e5e7eb; gap: 12px; }
+    #ai-chat-input input { flex: 1; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 24px; font-size: 14px; outline: none; }
+    #ai-chat-input input:focus { border-color: \${primaryColor}; }
+    #ai-chat-input button { padding: 12px 20px; background: \${primaryColor}; color: white; border: none; border-radius: 24px; font-size: 14px; font-weight: 500; cursor: pointer; }
+    #ai-chat-input button:hover { opacity: 0.9; }
+    #ai-chat-input button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ai-typing { display: flex; gap: 4px; padding: 12px 16px; }
+    .ai-typing span { width: 8px; height: 8px; background: #9ca3af; border-radius: 50%; animation: typing 1.4s infinite; }
+    .ai-typing span:nth-child(2) { animation-delay: 0.2s; }
+    .ai-typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typing { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-10px); } }
+    @media (max-width: 480px) { #ai-chat-window { width: calc(100vw - 40px); height: 70vh; right: -10px; } }
+  \`;
+  document.head.appendChild(styles);
+  
+  var widget = document.createElement('div');
+  widget.id = 'ai-chat-widget';
+  widget.innerHTML = \`
+    <div id="ai-chat-window">
+      <div id="ai-chat-header">
+        <h3>🤖 \${chatbotName}</h3>
+        <button class="close">×</button>
+      </div>
+      <div id="ai-chat-messages"></div>
+      <div id="ai-chat-input">
+        <input type="text" placeholder="Typ je bericht..." maxlength="500">
+        <button>Verstuur</button>
+      </div>
+    </div>
+    <button id="ai-chat-button">💬</button>
+  \`;
+  document.body.appendChild(widget);
+  
+  var button = document.getElementById('ai-chat-button');
+  var windowEl = document.getElementById('ai-chat-window');
+  var messagesEl = document.getElementById('ai-chat-messages');
+  var inputEl = windowEl.querySelector('input');
+  var sendBtn = windowEl.querySelector('#ai-chat-input button');
+  var closeBtn = windowEl.querySelector('.close');
+  var isOpen = false;
+  var sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  
+  function toggle() {
+    isOpen = !isOpen;
+    windowEl.style.display = isOpen ? 'flex' : 'none';
+    if (isOpen && messagesEl.children.length === 0) {
+      addMessage('Hallo! 👋 Ik ben je AI assistent. Hoe kan ik je vandaag helpen?', false);
+    }
+    if (isOpen) inputEl.focus();
+  }
+  
+  button.addEventListener('click', toggle);
+  closeBtn.addEventListener('click', toggle);
+  
+  function addMessage(text, isUser) {
+    var msg = document.createElement('div');
+    msg.className = 'ai-message ' + (isUser ? 'user' : 'bot');
+    msg.innerHTML = \`<div class="avatar">\${isUser ? '👤' : '🤖'}</div><div class="bubble">\${escapeHtml(text)}</div>\`;
+    messagesEl.appendChild(msg);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+  
+  function showTyping() {
+    var typing = document.createElement('div');
+    typing.className = 'ai-message bot typing';
+    typing.id = 'ai-typing-indicator';
+    typing.innerHTML = '<div class="avatar">🤖</div><div class="bubble"><div class="ai-typing"><span></span><span></span><span></span></div></div>';
+    messagesEl.appendChild(typing);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+  
+  function hideTyping() {
+    var typing = document.getElementById('ai-typing-indicator');
+    if (typing) typing.remove();
+  }
+  
+  function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  
+  async function sendMessage() {
+    var text = inputEl.value.trim();
+    if (!text) return;
+    
+    addMessage(text, true);
+    inputEl.value = '';
+    sendBtn.disabled = true;
+    showTyping();
+    
+    try {
+      var res = await fetch('${origin}/api/chat/' + chatbotId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, sessionId: sessionId })
+      });
+      var data = await res.json();
+      hideTyping();
+      addMessage(data.reply || 'Sorry, ik kon je vraag niet beantwoorden.', false);
+    } catch (e) {
+      hideTyping();
+      addMessage('Sorry, er is een fout opgetreden. Probeer het later opnieuw.', false);
+    }
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+  
+  sendBtn.addEventListener('click', sendMessage);
+  inputEl.addEventListener('keypress', function(e) { if (e.key === 'Enter') sendMessage(); });
+})();`;
+}
+
 // ============ ROUTES ============
 
 app.get('/', (req, res) => res.send(indexPage));
@@ -522,10 +662,59 @@ app.delete('/api/chatbots/:id', authMiddleware, (req, res) => {
   res.json({ success: true });
 });
 
-// Widget.js (placeholder)
+// WIDGET JS
 app.get('/widget.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
-  res.send(`console.log('Chatbot widget loaded for ID: ${req.query.id}');`);
+  res.send(generateWidgetJS(req.protocol + '://' + req.get('host')));
+});
+
+// API - Chat (AI response)
+app.post('/api/chat/:chatbotId', async (req, res) => {
+  const { message, sessionId } = req.body;
+  const db = loadDB();
+  const chatbot = db.chatbots.find(c => c.id === req.params.chatbotId);
+  
+  if (!chatbot) {
+    return res.json({ reply: 'Chatbot niet gevonden' });
+  }
+  
+  // Simpele AI responses (vervang later met echte AI)
+  const lowerMsg = message.toLowerCase();
+  let reply = '';
+  
+  if (lowerMsg.includes('hallo') || lowerMsg.includes('hoi') || lowerMsg.includes('hey')) {
+    reply = 'Hallo! 👋 Leuk je te ontmoeten. Waarmee kan ik je helpen?';
+  } else if (lowerMsg.includes('prijs') || lowerMsg.includes('kosten') || lowerMsg.includes('prijzen')) {
+    reply = 'Onze prijzen zijn: Gratis (€0), Starter (€29/maand), en Pro (€79/maand). Wil je meer informatie over een specifiek pakket?';
+  } else if (lowerMsg.includes('contact') || lowerMsg.includes('email') || lowerMsg.includes('telefoon')) {
+    reply = 'Je kunt ons bereiken via email of telefoon. Wil je dat ik je doorverbind met een medewerker?';
+  } else if (lowerMsg.includes('bedankt') || lowerMsg.includes('dank')) {
+    reply = 'Graag gedaan! 😊 Is er nog iets anders waarmee ik je kan helpen?';
+  } else if (lowerMsg.includes('dag') || lowerMsg.includes('doei') || lowerMsg.includes('tot ziens')) {
+    reply = 'Tot ziens! Fijne dag nog! 👋';
+  } else {
+    const defaultReplies = [
+      'Interessante vraag! Laat me dat voor je uitzoeken.',
+      'Ik begrijp je vraag. ' + (chatbot.knowledge ? 'Gebaseerd op onze informatie...' : 'Ik zal mijn best doen om je te helpen.'),
+      'Daar kan ik je mee helpen! Kun je wat meer context geven?',
+      'Goede vraag! Ik zal dit voor je natrekken.',
+      'Ik help je graag! Kun je je vraag wat specifieker maken?'
+    ];
+    reply = defaultReplies[Math.floor(Math.random() * defaultReplies.length)];
+  }
+  
+  // Sla conversatie op
+  db.conversations.push({
+    id: Date.now().toString(),
+    chatbotId: req.params.chatbotId,
+    sessionId: sessionId || 'unknown',
+    message,
+    reply,
+    createdAt: new Date().toISOString()
+  });
+  saveDB(db);
+  
+  res.json({ reply });
 });
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
